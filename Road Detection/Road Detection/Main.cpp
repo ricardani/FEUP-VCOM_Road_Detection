@@ -5,6 +5,8 @@
 using namespace cv;
 using namespace std;
 
+Point RIGHT_LINE[2], LEFT_LINE[2], INTERSECT;
+
 double cross(Point v1, Point v2) {
 	return v1.x*v2.y - v1.y*v2.x;
 }
@@ -73,13 +75,12 @@ void detectLines(Mat original, Mat src) {
 
 	vector<Vec4i> lines;
 	// detect lines
-	HoughLinesP(dst, lines, 1, CV_PI / 180, 50, 50, 10);
+	HoughLinesP(dst, lines, 1, CV_PI / 180, 50, 100, 1);
 
 	cvtColor(dst, dst, CV_GRAY2BGR);
 
 	// draw lines
-	bool right_side = false, left_side = false;
-	Point right_line[2], left_line[2], intersect;
+	int right_angle = 99999, left_angle = 0;
 
 	for (size_t i = 0; i < lines.size(); i++)
 	{
@@ -88,36 +89,32 @@ void detectLines(Mat original, Mat src) {
 		angle = angle < 0 ? angle + 360 : angle;
 		angle = angle > 180 ? angle - 180 : angle;
 
-		if (angle > 10 && angle <= 45 && !right_side) {
-			fullLine(&copyOriginal, Point(l[0], l[1]), Point(l[2], l[3]), right_line);
-			right_side = true;
+		if (angle > 10 && angle <= 45) {
+			if (angle > left_angle) {
+				fullLine(&copyOriginal, Point(l[0], l[1]), Point(l[2], l[3]), LEFT_LINE);
+				left_angle = angle;
+			}  
 		}
-
-		if (angle < 170 && angle >= 135 && !left_side) {
-			fullLine(&copyOriginal, Point(l[0], l[1]), Point(l[2], l[3]), left_line);
-			left_side = true;
-		}
-
-		if (right_side && left_side) {
-			getIntersectionPoint(right_line[0], right_line[1], left_line[0], left_line[1], intersect);
-
-			drawLine(&copyOriginal, right_line, intersect);
-			drawLine(&dst, right_line, intersect);
-
-			drawLine(&copyOriginal, left_line, intersect);
-			drawLine(&dst, left_line, intersect);
-
-			break;
+		else if (angle < 170 && angle >= 135) {
+			if (angle < right_angle) {
+				fullLine(&copyOriginal, Point(l[0], l[1]), Point(l[2], l[3]), RIGHT_LINE);
+				right_angle = angle;
+			}
 		}
 	}
 
+	getIntersectionPoint(LEFT_LINE[0], LEFT_LINE[1], RIGHT_LINE[0], RIGHT_LINE[1], INTERSECT);
+	drawLine(&copyOriginal, LEFT_LINE, INTERSECT);
+	drawLine(&copyOriginal, RIGHT_LINE, INTERSECT);
+
+
+	circle(copyOriginal, INTERSECT, 10, Scalar(255, 255, 255), 3, 8);
+
 	imshow("Probabilistic Hough", copyOriginal);
-	imshow("Canny", dst);
 }
 
 int main(int argc, char** argv)
 {
-
 	/*string imageName("road1.jpg");
 	if (argc > 1)
 	{
@@ -128,7 +125,9 @@ int main(int argc, char** argv)
 
 	src = imread(imageName.c_str(), IMREAD_COLOR);
 
-	
+	int iLowH = 0, iHighH = 179;
+	int iLowS = 0, iHighS = 80;
+	int iLowV = 0, iHighV = 255;
 
 	Mat imgOriginal = src;
 
@@ -150,19 +149,20 @@ int main(int argc, char** argv)
 
 	Mat whiteImg = Mat::ones(imgThresholded.size(), imgThresholded.type()) * 255;
 
-	imshow("Thresholded Image", imgThresholded); //show the thresholded image
+	//imshow("Thresholded Image", imgThresholded); //show the thresholded image
 
 	Mat road;
 
 	imgOriginal.copyTo(road, imgThresholded);
 
-	imshow("Original", road); //show the original image
+	//imshow("Original", road); //show the original image
 
 	detectLines(src, road);
 
 	waitKey(0);
 
 	return 0;*/
+
 
 	Mat src;
 	Mat imgOriginal;
@@ -179,24 +179,16 @@ int main(int argc, char** argv)
 		return 1;
 	}
 
-	namedWindow("video", WINDOW_KEEPRATIO);
-	namedWindow("mask", WINDOW_KEEPRATIO);
 	while (video.isOpened())
 	{
 		bool success = video.read(src);
-		/*
-		Rect region_of_interest = Rect(0, src.rows / 2, src.cols, src.rows / 2);
-
-		imgOriginal = src(region_of_interest);
-		*/
 
 		mask = Mat::zeros(src.size(), CV_8UC3);
 
-		rectangle(mask, Point(0, mask.rows / 2), Point(mask.cols, mask.rows), Scalar(255, 255, 255), CV_FILLED);
+		rectangle(mask, Point(0, 2 * (mask.rows / 3)), Point(mask.cols, mask.rows), Scalar(255, 255, 255), CV_FILLED);
 		cvtColor(mask, mask, CV_BGR2GRAY);
 
 		src.copyTo(imgOriginal, mask);
-
 
 		if (success) {
 			Mat imgHSV;
@@ -207,7 +199,7 @@ int main(int argc, char** argv)
 
 			inRange(imgHSV, Scalar(iLowH, iLowS, iLowV), Scalar(iHighH, iHighS, iHighV), imgThresholded); //Threshold the image
 
-																										  //morphological opening (removes small objects from the foreground)
+			//morphological opening (removes small objects from the foreground)
 			erode(imgThresholded, imgThresholded, getStructuringElement(MORPH_ELLIPSE, Size(5, 5)));
 			dilate(imgThresholded, imgThresholded, getStructuringElement(MORPH_ELLIPSE, Size(5, 5)));
 
@@ -217,13 +209,13 @@ int main(int argc, char** argv)
 
 			Mat whiteImg = Mat::ones(imgThresholded.size(), imgThresholded.type()) * 255;
 
-			imshow("Thresholded Image", imgThresholded); //show the thresholded image
+			//imshow("Thresholded Image", imgThresholded); //show the thresholded image
 
 			Mat road;
 
 			imgOriginal.copyTo(road, imgThresholded);
 
-			imshow("Original", road); //show the original image
+			//imshow("Original", road); //show the original image
 
 			detectLines(src, road);
 		}
