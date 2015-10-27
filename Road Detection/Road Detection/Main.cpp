@@ -6,6 +6,8 @@ using namespace cv;
 using namespace std;
 
 Point RIGHT_LINE[2], LEFT_LINE[2], INTERSECT;
+int MENU_OPTION;
+string FILENAME;
 
 double cross(Point v1, Point v2) {
 	return v1.x*v2.y - v1.y*v2.x;
@@ -93,7 +95,7 @@ void detectLines(Mat original, Mat src) {
 			if (angle > left_angle) {
 				fullLine(&copyOriginal, Point(l[0], l[1]), Point(l[2], l[3]), LEFT_LINE);
 				left_angle = angle;
-			}  
+			}
 		}
 		else if (angle < 170 && angle >= 135) {
 			if (angle < right_angle) {
@@ -113,31 +115,24 @@ void detectLines(Mat original, Mat src) {
 	imshow("Probabilistic Hough", copyOriginal);
 }
 
-int main(int argc, char** argv)
-{
-	/*string imageName("road1.jpg");
-	if (argc > 1)
-	{
-		imageName = argv[1];
-	}
-
-	Mat src;
-
-	src = imread(imageName.c_str(), IMREAD_COLOR);
+void roadDetection(Mat src) {
 
 	int iLowH = 0, iHighH = 179;
 	int iLowS = 0, iHighS = 80;
 	int iLowV = 0, iHighV = 255;
 
-	Mat imgOriginal = src;
+	Mat mask, imgOriginal, imgHSV, imgThresholded, whiteImg, road;
 
-	Mat imgHSV;
+	mask = Mat::zeros(src.size(), CV_8UC3);
 
-	cvtColor(imgOriginal, imgHSV, COLOR_BGR2HSV); //Convert the captured frame from BGR to HSV
+	rectangle(mask, Point(0, 2 * (mask.rows / 3)), Point(mask.cols, mask.rows), Scalar(255, 255, 255), CV_FILLED);
+	cvtColor(mask, mask, CV_BGR2GRAY);
 
-	Mat imgThresholded;
+	src.copyTo(imgOriginal, mask);
 
-	inRange(imgHSV, Scalar(iLowH, iLowS, iLowV), Scalar(iHighH, iHighS, iHighV), imgThresholded); //Threshold the image
+	//Threshold the image
+	cvtColor(imgOriginal, imgHSV, COLOR_BGR2HSV);
+	inRange(imgHSV, Scalar(iLowH, iLowS, iLowV), Scalar(iHighH, iHighS, iHighV), imgThresholded); 
 
 	//morphological opening (removes small objects from the foreground)
 	erode(imgThresholded, imgThresholded, getStructuringElement(MORPH_ELLIPSE, Size(5, 5)));
@@ -147,77 +142,32 @@ int main(int argc, char** argv)
 	dilate(imgThresholded, imgThresholded, getStructuringElement(MORPH_ELLIPSE, Size(5, 5)));
 	erode(imgThresholded, imgThresholded, getStructuringElement(MORPH_ELLIPSE, Size(5, 5)));
 
-	Mat whiteImg = Mat::ones(imgThresholded.size(), imgThresholded.type()) * 255;
-
-	//imshow("Thresholded Image", imgThresholded); //show the thresholded image
-
-	Mat road;
+	whiteImg = Mat::ones(imgThresholded.size(), imgThresholded.type()) * 255;
 
 	imgOriginal.copyTo(road, imgThresholded);
 
-	//imshow("Original", road); //show the original image
-
 	detectLines(src, road);
+}
 
-	waitKey(0);
-
-	return 0;*/
-
-
+bool videoProcessing() {
 	Mat src;
 	Mat imgOriginal;
 
-	int iLowH = 0, iHighH = 179;
-	int iLowS = 0, iHighS = 80;
-	int iLowV = 0, iHighV = 255;
-
-	VideoCapture video("RoadDetectionVideo2.mp4");
+	VideoCapture video(FILENAME);
 	Mat thresh, final_mask, image_final, mask;
 
 	if (!video.isOpened())
 	{
-		return 1;
+		cout << "Could not open or find the video" << endl;
+		return false;
 	}
 
 	while (video.isOpened())
 	{
 		bool success = video.read(src);
 
-		mask = Mat::zeros(src.size(), CV_8UC3);
-
-		rectangle(mask, Point(0, 2 * (mask.rows / 3)), Point(mask.cols, mask.rows), Scalar(255, 255, 255), CV_FILLED);
-		cvtColor(mask, mask, CV_BGR2GRAY);
-
-		src.copyTo(imgOriginal, mask);
-
 		if (success) {
-			Mat imgHSV;
-
-			cvtColor(imgOriginal, imgHSV, COLOR_BGR2HSV); //Convert the captured frame from BGR to HSV
-
-			Mat imgThresholded;
-
-			inRange(imgHSV, Scalar(iLowH, iLowS, iLowV), Scalar(iHighH, iHighS, iHighV), imgThresholded); //Threshold the image
-
-			//morphological opening (removes small objects from the foreground)
-			erode(imgThresholded, imgThresholded, getStructuringElement(MORPH_ELLIPSE, Size(5, 5)));
-			dilate(imgThresholded, imgThresholded, getStructuringElement(MORPH_ELLIPSE, Size(5, 5)));
-
-			//morphological closing (removes small holes from the foreground)
-			dilate(imgThresholded, imgThresholded, getStructuringElement(MORPH_ELLIPSE, Size(5, 5)));
-			erode(imgThresholded, imgThresholded, getStructuringElement(MORPH_ELLIPSE, Size(5, 5)));
-
-			Mat whiteImg = Mat::ones(imgThresholded.size(), imgThresholded.type()) * 255;
-
-			//imshow("Thresholded Image", imgThresholded); //show the thresholded image
-
-			Mat road;
-
-			imgOriginal.copyTo(road, imgThresholded);
-
-			//imshow("Original", road); //show the original image
-
-			detectLines(src, road);
+			roadDetection(src);
 		}
 
 		if (waitKey(30) == 27) //wait for 'esc' key press for 30ms. If 'esc' key is pressed, break loop
@@ -226,4 +176,81 @@ int main(int argc, char** argv)
 			break;
 		}
 	}
+
+	return true;
+}
+
+bool imageProcessing() {
+	string imageName(FILENAME);
+
+	Mat src;
+
+	src = imread(imageName.c_str(), IMREAD_COLOR);
+
+	if (src.empty())
+	{
+		cout << "Could not open or find the image" << endl;
+		return false;
+	}
+
+	roadDetection(src);
+
+	waitKey(0);
+
+	return true;
+}
+
+void menu() {
+
+	cout << "  ____                 _   ____       _            _   _             " << endl;
+	cout << " |  _ \\ ___   __ _  __| | |  _ \\  ___| |_ ___  ___| |_(_) ___  _ __  " << endl;
+	cout << " | |_) / _ \\ / _` |/ _` | | | | |/ _ \\ __/ _ \\/ __| __| |/ _ \\| '_ \\ " << endl;
+	cout << " |  _ < (_) | (_| | (_| | | |_| |  __/ ||  __/ (__| |_| | (_) | | | |" << endl;
+	cout << " |_| \\_\\___/ \\__,_|\\__,_| |____/ \\___|\\__\\___|\\___|\\__|_|\\___/|_| |_|" << endl;
+	cout << endl;
+	cout << "  _____  ___   ___   ___   ___   ___   ___  " << endl;
+	cout << " |___ / / _ \\ / _ \\ / _ \\ / _ \\ / _ \\ / _ \\ " << endl;
+	cout << "   |_ \\| | | | | | | | | | | | | | | | | | |" << endl;
+	cout << "  ___) | |_| | |_| | |_| | |_| | |_| | |_| |" << endl;
+	cout << " |____/ \\___/ \\___/ \\___/ \\___/ \\___/ \\___/ " << endl;
+	cout << endl;
+
+	string option;
+
+	cout << "Choose an option:" << endl;
+	cout << "1 - Image" << endl;
+	cout << "2 - Video" << endl;
+	cout << "0 - Exit" << endl;
+	cin >> option;
+
+	MENU_OPTION = atoi(option.c_str());
+
+	if (MENU_OPTION == 0) {
+		return;
+	}
+
+	cout << endl << "Filename:" << endl;
+	cin >> FILENAME;
+
+}
+
+int main(int argc, char** argv)
+{
+
+	menu();
+
+	switch (MENU_OPTION)
+	{
+	case 1:
+		imageProcessing();
+		break;
+	case 2:
+		videoProcessing();
+		break;
+	default:
+		return 0;
+		break;
+	}
+
+	return 0;
 }
