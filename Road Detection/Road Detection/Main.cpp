@@ -5,7 +5,7 @@
 using namespace cv;
 using namespace std;
 
-Point RIGHT_LINE[2], LEFT_LINE[2], INTERSECT;
+Point RIGHT_LINE[2], LEFT_LINE[2], INTERSECT = Point(0,0);
 int MENU_OPTION;
 string FILENAME;
 
@@ -55,7 +55,7 @@ void drawLine(Mat *img, Point line[], Point intersection) {
 
 }
 
-void detectLines(Mat original, Mat src) {
+void detectLines(Mat original, Mat src, bool retry = false) {
 	int edgeThresh = 1;
 	int lowThreshold = 50;
 	int const maxThreshold = 400;
@@ -77,12 +77,18 @@ void detectLines(Mat original, Mat src) {
 
 	vector<Vec4i> lines;
 	// detect lines
-	HoughLinesP(dst, lines, 1, CV_PI / 180, 50, 100, 1);
+	if (retry) {
+		HoughLinesP(dst, lines, 1, CV_PI / 180, 50, 50, 10);
+	}
+	else {
+		HoughLinesP(dst, lines, 1, CV_PI / 180, 50, 100, 1);
+	}
+	
 
 	cvtColor(dst, dst, CV_GRAY2BGR);
 
 	// draw lines
-	int right_angle = 99999, left_angle = 0;
+	int right_angle = 9999, left_angle = 0;
 
 	for (size_t i = 0; i < lines.size(); i++)
 	{
@@ -106,13 +112,19 @@ void detectLines(Mat original, Mat src) {
 	}
 
 	getIntersectionPoint(LEFT_LINE[0], LEFT_LINE[1], RIGHT_LINE[0], RIGHT_LINE[1], INTERSECT);
-	drawLine(&copyOriginal, LEFT_LINE, INTERSECT);
-	drawLine(&copyOriginal, RIGHT_LINE, INTERSECT);
 
+	if (INTERSECT == Point(0, 0) && MENU_OPTION == 1 && !retry) {
+		detectLines(original, src, true);
+		return;
+	}
 
-	circle(copyOriginal, INTERSECT, 10, Scalar(255, 255, 255), 3, 8);
+	if (INTERSECT != Point(0, 0)) {
+		drawLine(&copyOriginal, LEFT_LINE, INTERSECT);
+		drawLine(&copyOriginal, RIGHT_LINE, INTERSECT);
+		circle(copyOriginal, INTERSECT, 10, Scalar(255, 255, 255), 3, 8);
+	}
 
-	imshow("Probabilistic Hough", copyOriginal);
+	imshow("Road Detection", copyOriginal);
 }
 
 void roadDetection(Mat src) {
@@ -125,7 +137,7 @@ void roadDetection(Mat src) {
 
 	mask = Mat::zeros(src.size(), CV_8UC3);
 
-	rectangle(mask, Point(0, 2 * (mask.rows / 3)), Point(mask.cols, mask.rows), Scalar(255, 255, 255), CV_FILLED);
+	rectangle(mask, Point(0, 1 * (mask.rows / 2)), Point(mask.cols, mask.rows), Scalar(255, 255, 255), CV_FILLED);
 	cvtColor(mask, mask, CV_BGR2GRAY);
 
 	src.copyTo(imgOriginal, mask);
