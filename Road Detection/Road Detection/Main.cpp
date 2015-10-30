@@ -8,8 +8,7 @@ using namespace std;
 Point RIGHT_LINE[2], LEFT_LINE[2], INTERSECT = Point(0, 0);
 int MENU_OPTION;
 string FILENAME;
-const bool RIGHT = true;
-const bool LEFT = false;
+const bool RIGHT = true, LEFT = false;
 
 double cross(Point v1, Point v2) {
 	return v1.x*v2.y - v1.y*v2.x;
@@ -34,6 +33,7 @@ double Slope(int x0, int y0, int x1, int y1) {
 	return (double)(y1 - y0) / (x1 - x0);
 }
 
+// Get a full line from two points
 void fullLine(Mat *img, Point a, Point b, Point new_point[]) {
 	double slope = Slope(a.x, a.y, b.x, b.y);
 	int line_thickness = 2;
@@ -57,7 +57,7 @@ void drawLine(Mat *img, Point line[], Point intersection) {
 
 }
 
-//
+//Check if neighbourhood pixels are white
 double checkNeighbourhoodPixels(Mat src, Mat src_hsv, double numNeighbourhoodPixel, Vec4i line, bool orientation) {
 
 	double numWhitePixelsBottomRight = 0, numWhitePixelsBottomLeft = 0, numWhitePixelsTopRight = 0, numWhitePixelsTopLeft = 0;
@@ -95,8 +95,6 @@ double checkNeighbourhoodPixels(Mat src, Mat src_hsv, double numNeighbourhoodPix
 		}
 	}
 
-	imshow("Neighbourhood Pixels", src);
-
 	double numWhitePixelsQuadrants[4] = { numWhitePixelsBottomRight, numWhitePixelsBottomLeft, numWhitePixelsTopRight, numWhitePixelsTopLeft };
 	double numWhitePixels = numWhitePixelsQuadrants[0];
 
@@ -106,9 +104,6 @@ double checkNeighbourhoodPixels(Mat src, Mat src_hsv, double numNeighbourhoodPix
 	}
 
 	double percentageNeighbourhoodWhitePixels = (numWhitePixels / (numNeighbourhoodPixel / 4)) * 100;
-
-	if (orientation == RIGHT)
-		cout << "Percentage of white pixels: " << percentageNeighbourhoodWhitePixels << "%" << endl;
 
 	return percentageNeighbourhoodWhitePixels;
 
@@ -143,7 +138,6 @@ void detectLines(Mat original, Mat src, bool retry = false) {
 	else {
 		HoughLinesP(dst, lines, 1, CV_PI / 180, 50, 100, 1);
 	}
-
 
 	cvtColor(dst, dst, CV_GRAY2BGR);
 
@@ -232,14 +226,14 @@ void roadDetection(Mat src) {
 
 	Mat mask, imgOriginal, imgHSV, imgThresholded, whiteImg, road;
 
+	//Crop image - uses the bottom half of the image for line detection
 	mask = Mat::zeros(src.size(), CV_8UC3);
-
 	rectangle(mask, Point(0, 1 * (mask.rows / 2)), Point(mask.cols, mask.rows), Scalar(255, 255, 255), CV_FILLED);
 	cvtColor(mask, mask, CV_BGR2GRAY);
 
 	src.copyTo(imgOriginal, mask);
 
-	//Threshold the image
+	//Color segmentation
 	cvtColor(imgOriginal, imgHSV, COLOR_BGR2HSV);
 	inRange(imgHSV, Scalar(iLowH, iLowS, iLowV), Scalar(iHighH, iHighS, iHighV), imgThresholded);
 
@@ -258,6 +252,7 @@ void roadDetection(Mat src) {
 	detectLines(src, road);
 }
 
+//Function for video processing
 bool videoProcessing() {
 	Mat src;
 	Mat imgOriginal;
@@ -289,6 +284,7 @@ bool videoProcessing() {
 	return true;
 }
 
+//Function for image processing
 bool imageProcessing() {
 	string imageName(FILENAME);
 
