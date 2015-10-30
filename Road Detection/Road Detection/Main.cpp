@@ -5,9 +5,11 @@
 using namespace cv;
 using namespace std;
 
-Point RIGHT_LINE[2], LEFT_LINE[2], INTERSECT = Point(0,0);
+Point RIGHT_LINE[2], LEFT_LINE[2], INTERSECT = Point(0, 0);
 int MENU_OPTION;
 string FILENAME;
+const bool RIGHT = true;
+const bool LEFT = false;
 
 double cross(Point v1, Point v2) {
 	return v1.x*v2.y - v1.y*v2.x;
@@ -55,18 +57,76 @@ void drawLine(Mat *img, Point line[], Point intersection) {
 
 }
 
+//
+double checkNeighbourhoodPixels(Mat src, Mat src_hsv, double numNeighbourhoodPixel, Vec4i line, bool orientation) {
+
+	double numWhitePixelsBottomRight = 0, numWhitePixelsBottomLeft = 0, numWhitePixelsTopRight = 0, numWhitePixelsTopLeft = 0;
+
+	for (int i = 0; i < sqrt(numNeighbourhoodPixel / 4); i++) {
+		for (int j = 0; j < sqrt(numNeighbourhoodPixel / 4); j++) {
+			if ((line[0] - i > 0 && line[0] + i < src.cols) && (line[1] - j > 0 && line[1] + j < src.rows)) {
+				Vec3b neighbourPixelBottomRight = src_hsv.at<Vec3b>(Point(line[0] + i, line[1] + j));
+				neighbourPixelBottomRight.val[0] += 90;
+				if (neighbourPixelBottomRight.val[2] > 170 && (neighbourPixelBottomRight.val[1] >= 0 && neighbourPixelBottomRight.val[1] < 40))
+					numWhitePixelsBottomRight++;
+
+				Vec3b neighbourPixelBottomLeft = src_hsv.at<Vec3b>(Point(line[0] - i, line[1] - j));
+				neighbourPixelBottomLeft.val[0] += 90;
+				if (neighbourPixelBottomLeft.val[2] > 170 && (neighbourPixelBottomRight.val[1] >= 0 && neighbourPixelBottomRight.val[1] < 40))
+					numWhitePixelsBottomLeft++;
+
+				Vec3b neighbourPixelTopRight = src_hsv.at<Vec3b>(Point(line[0] + i, line[1] - j));
+				neighbourPixelTopRight.val[0] += 90;
+				if (neighbourPixelTopRight.val[2] > 170 && (neighbourPixelBottomRight.val[1] >= 0 && neighbourPixelBottomRight.val[1] < 40))
+					numWhitePixelsTopRight++;
+
+				Vec3b neighbourPixelTopLeft = src_hsv.at<Vec3b>(Point(line[0] - i, line[1] + j));
+				neighbourPixelTopLeft.val[0] += 90;
+				if (neighbourPixelTopLeft.val[2] > 170 && (neighbourPixelBottomRight.val[1] >= 0 && neighbourPixelBottomRight.val[1] < 40))
+					numWhitePixelsTopLeft++;
+
+				src.at<Vec3b>(Point(line[0] + i, line[1] + j)) = neighbourPixelBottomRight;
+				src.at<Vec3b>(Point(line[0] - i, line[1] - j)) = neighbourPixelBottomLeft;
+				src.at<Vec3b>(Point(line[0] + i, line[1] - j)) = neighbourPixelTopRight;
+				src.at<Vec3b>(Point(line[0] - i, line[1] + j)) = neighbourPixelTopLeft;
+
+			}
+
+		}
+	}
+
+	imshow("Neighbourhood Pixels", src);
+
+	double numWhitePixelsQuadrants[4] = { numWhitePixelsBottomRight, numWhitePixelsBottomLeft, numWhitePixelsTopRight, numWhitePixelsTopLeft };
+	double numWhitePixels = numWhitePixelsQuadrants[0];
+
+	for (int i = 0; i < sizeof(numWhitePixelsQuadrants) / sizeof(numWhitePixelsQuadrants[0]) - 1; i++) {
+		if (numWhitePixelsQuadrants[i + 1] > numWhitePixelsQuadrants[i])
+			numWhitePixels = numWhitePixelsQuadrants[i + 1];
+	}
+
+	double percentageNeighbourhoodWhitePixels = (numWhitePixels / (numNeighbourhoodPixel / 4)) * 100;
+
+	if (orientation == RIGHT)
+		cout << "Percentage of white pixels: " << percentageNeighbourhoodWhitePixels << "%" << endl;
+
+	return percentageNeighbourhoodWhitePixels;
+
+}
+
 void detectLines(Mat original, Mat src, bool retry = false) {
 	int edgeThresh = 1;
 	int lowThreshold = 50;
 	int const maxThreshold = 400;
 	int kernel_size = 3;
 
-	Mat src_gray, dst, color_dst, copyOriginal;
+	Mat src_gray, src_hsv, dst, color_dst, copyOriginal;
 
 	original.copyTo(copyOriginal);
 
 	//Gaussian Blur
 	cvtColor(src, src_gray, CV_RGB2GRAY);
+	cvtColor(src, src_hsv, CV_BGR2HSV);
 
 	GaussianBlur(src_gray, dst, Size(kernel_size, kernel_size), 0, 0);
 
@@ -83,12 +143,13 @@ void detectLines(Mat original, Mat src, bool retry = false) {
 	else {
 		HoughLinesP(dst, lines, 1, CV_PI / 180, 50, 100, 1);
 	}
-	
+
 
 	cvtColor(dst, dst, CV_GRAY2BGR);
 
 	// draw lines
 	int right_angle = 9999, left_angle = 0;
+	double percentageNeighbourhoodWhitePixels = 0;
 
 	for (size_t i = 0; i < lines.size(); i++)
 	{
@@ -97,16 +158,52 @@ void detectLines(Mat original, Mat src, bool retry = false) {
 		angle = angle < 0 ? angle + 360 : angle;
 		angle = angle > 180 ? angle - 180 : angle;
 
+		double numNeighbourhoodPixel = 36;
+
 		if (angle > 10 && angle <= 45) {
 			if (angle > left_angle) {
-				fullLine(&copyOriginal, Point(l[0], l[1]), Point(l[2], l[3]), LEFT_LINE);
-				left_angle = angle;
+				percentageNeighbourhoodWhitePixels = checkNeighbourhoodPixels(src, src_hsv, numNeighbourhoodPixel, l, LEFT);
+
+				if (percentageNeighbourhoodWhitePixels >= 1) {
+					fullLine(&copyOriginal, Point(l[0], l[1]), Point(l[2], l[3]), LEFT_LINE);
+					left_angle = angle;
+				}
 			}
 		}
 		else if (angle < 170 && angle >= 135) {
 			if (angle < right_angle) {
-				fullLine(&copyOriginal, Point(l[0], l[1]), Point(l[2], l[3]), RIGHT_LINE);
-				right_angle = angle;
+				percentageNeighbourhoodWhitePixels = checkNeighbourhoodPixels(src, src_hsv, numNeighbourhoodPixel, l, RIGHT);
+
+				if (percentageNeighbourhoodWhitePixels >= 1) {
+					fullLine(&copyOriginal, Point(l[0], l[1]), Point(l[2], l[3]), RIGHT_LINE);
+					right_angle = angle;
+				}
+			}
+		}
+	}
+
+	if (percentageNeighbourhoodWhitePixels < 1) {
+		for (size_t i = 0; i < lines.size(); i++)
+		{
+			Vec4i l = lines[i];
+			double angle = atan2(l[3] - l[1], l[2] - l[0]) * 180.0 / CV_PI;
+			angle = angle < 0 ? angle + 360 : angle;
+			angle = angle > 180 ? angle - 180 : angle;
+
+			double numNeighbourhoodPixel = 36;
+
+			if (angle > 10 && angle <= 45) {
+				if (angle > left_angle) {
+
+					fullLine(&copyOriginal, Point(l[0], l[1]), Point(l[2], l[3]), LEFT_LINE);
+					left_angle = angle;
+				}
+			}
+			else if (angle < 170 && angle >= 135) {
+				if (angle < right_angle) {
+					fullLine(&copyOriginal, Point(l[0], l[1]), Point(l[2], l[3]), RIGHT_LINE);
+					right_angle = angle;
+				}
 			}
 		}
 	}
@@ -144,7 +241,7 @@ void roadDetection(Mat src) {
 
 	//Threshold the image
 	cvtColor(imgOriginal, imgHSV, COLOR_BGR2HSV);
-	inRange(imgHSV, Scalar(iLowH, iLowS, iLowV), Scalar(iHighH, iHighS, iHighV), imgThresholded); 
+	inRange(imgHSV, Scalar(iLowH, iLowS, iLowV), Scalar(iHighH, iHighS, iHighV), imgThresholded);
 
 	//morphological opening (removes small objects from the foreground)
 	erode(imgThresholded, imgThresholded, getStructuringElement(MORPH_ELLIPSE, Size(5, 5)));
